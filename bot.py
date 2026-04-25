@@ -1,5 +1,4 @@
 import asyncio
-import os
 import yt_dlp
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -15,62 +14,47 @@ user_data = {}
 # ---------------- START ----------------
 @dp.message(Command("start"))
 async def start(message: types.Message):
-    await message.answer("🎧 Бот работает!\n\nОтправь название песни или ссылку")
+    await message.answer("🎧 Fast bot ready")
 
-# ---------------- SEARCH MUSIC ----------------
+# ---------------- SEARCH (FAST FIX) ----------------
 @dp.message()
 async def search(message: types.Message):
     text = message.text
 
-    if "http" in text:
-        await message.answer("📥 Скачиваю видео...")
+    await message.answer("🔎 ищу...")
 
+    try:
         ydl_opts = {
-            "format": "mp4",
-            "outtmpl": "video.%(ext)s",
-            "quiet": True
+            "quiet": True,
+            "noplaylist": True,
+            "socket_timeout": 5
         }
 
-        try:
-            ydl_opts = {
-    "quiet": True,
-    "socket_timeout": 5,
-    "noplaylist": True
-}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"ytsearch3:{text}", download=False)
 
-with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-    info = ydl.extract_info(f"ytsearch5:{text}", download=False)                file = ydl.prepare_filename(info)
+        results = info.get("entries", [])
 
-            await message.answer_video(types.FSInputFile(file))
+        if not results:
+            await message.answer("❌ не найдено")
+            return
 
-        except:
-            await message.answer("❌ Ошибка загрузки видео")
-        return
+        user_data[message.from_user.id] = results
 
-    await message.answer("🔎 Ищу музыку...")
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=r["title"][:35],
+                callback_data=f"sel|{i}"
+            )]
+            for i, r in enumerate(results)
+        ])
 
-    with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
-        info = ydl.extract_info(f"ytsearch5:{text}", download=False)
+        await message.answer("🎧 выбери:", reply_markup=kb)
 
-    results = info.get("entries", [])
+    except:
+        await message.answer("❌ ошибка поиска")
 
-    if not results:
-        await message.answer("❌ Ничего не найдено")
-        return
-
-    user_data[message.from_user.id] = results
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text=r["title"][:40],
-            callback_data=f"sel|{i}"
-        )]
-        for i, r in enumerate(results)
-    ])
-
-    await message.answer("🎧 Выбери трек:", reply_markup=kb)
-
-# ---------------- SELECT TRACK ----------------
+# ---------------- SELECT ----------------
 @dp.callback_query(lambda c: c.data.startswith("sel"))
 async def select(callback: types.CallbackQuery):
     i = int(callback.data.split("|")[1])
@@ -79,12 +63,12 @@ async def select(callback: types.CallbackQuery):
     url = user_data[uid][i]["webpage_url"]
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬇️ Скачать аудио", callback_data=f"dl|{url}")]
+        [InlineKeyboardButton(text="⬇️ скачать", callback_data=f"dl|{url}")]
     ])
 
-    await callback.message.answer("Готово 👇", reply_markup=kb)
+    await callback.message.answer("готово 👇", reply_markup=kb)
 
-# ---------------- DOWNLOAD AUDIO ----------------
+# ---------------- DOWNLOAD ----------------
 @dp.callback_query(lambda c: c.data.startswith("dl"))
 async def download(callback: types.CallbackQuery):
     url = callback.data.split("|")[1]
@@ -104,7 +88,7 @@ async def download(callback: types.CallbackQuery):
         await callback.message.answer_audio(types.FSInputFile(file_path))
 
     except:
-        await callback.message.answer("❌ Ошибка загрузки")
+        await callback.message.answer("❌ ошибка загрузки")
 
 # ---------------- RUN ----------------
 async def main():
