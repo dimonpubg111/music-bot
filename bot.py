@@ -1,9 +1,20 @@
 import os
 import asyncio
+import logging
 import yt_dlp
 
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import CommandTOKEN = os.getenv("BOT_TOKEN")
+from aiogram.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+# ---------------- LOGGING ----------------
+logging.basicConfig(level=logging.INFO)
+
+# ---------------- CONFIG ----------------
+TOKEN = os.getenv("BOT_TOKEN")
+
+if not TOKEN:
+    raise ValueError("BOT_TOKEN is missing in environment variables")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -13,14 +24,42 @@ user_data = {}
 # ---------------- START ----------------
 @dp.message(Command("start"))
 async def start(message: types.Message):
-    await message.answer("🎧 Fast bot ready")
+    await message.answer(
+        "🎧 Production Bot готов\n\n"
+        "📌 Отправь название музыки\n"
+        "📎 Или ссылку (YouTube / TikTok)"
+    )
 
-# ---------------- SEARCH (FAST FIX) ----------------
+# ---------------- SEARCH ----------------
 @dp.message()
-async def search(message: types.Message):
-    text = message.text
+async def handle(message: types.Message):
+    text = message.text.strip()
 
-    await message.answer("🔎 ищу...")
+    # ---------------- LINK ----------------
+    if "http" in text:
+        await message.answer("📥 Загружаю видео...")
+
+        try:
+            ydl_opts = {
+                "format": "mp4",
+                "outtmpl": "video.%(ext)s",
+                "quiet": True,
+                "socket_timeout": 8
+            }
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(text, download=True)
+                file = ydl.prepare_filename(info)
+
+            await message.answer_video(types.FSInputFile(file))
+
+        except Exception as e:
+            logging.error(e)
+            await message.answer("❌ Ошибка загрузки видео")
+        return
+
+    # ---------------- MUSIC SEARCH ----------------
+    await message.answer("🔎 Ищу музыку...")
 
     try:
         ydl_opts = {
@@ -35,37 +74,43 @@ async def search(message: types.Message):
         results = info.get("entries", [])
 
         if not results:
-            await message.answer("❌ не найдено")
+            await message.answer("❌ Ничего не найдено")
             return
 
         user_data[message.from_user.id] = results
 
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
-                text=r["title"][:35],
+                text=r["title"][:40],
                 callback_data=f"sel|{i}"
             )]
             for i, r in enumerate(results)
         ])
 
-        await message.answer("🎧 выбери:", reply_markup=kb)
+        await message.answer("🎧 Выбери трек:", reply_markup=kb)
 
-    except:
-        await message.answer("❌ ошибка поиска")
+    except Exception as e:
+        logging.error(e)
+        await message.answer("❌ Ошибка поиска")
 
 # ---------------- SELECT ----------------
 @dp.callback_query(lambda c: c.data.startswith("sel"))
 async def select(callback: types.CallbackQuery):
-    i = int(callback.data.split("|")[1])
-    uid = callback.from_user.id
+    try:
+        i = int(callback.data.split("|")[1])
+        uid = callback.from_user.id
 
-    url = user_data[uid][i]["webpage_url"]
+        url = user_data[uid][i]["webpage_url"]
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬇️ скачать", callback_data=f"dl|{url}")]
-    ])
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬇️ Скачать аудио", callback_data=f"dl|{url}")]
+        ])
 
-    await callback.message.answer("готово 👇", reply_markup=kb)
+        await callback.message.answer("Готово 👇", reply_markup=kb)
+
+    except Exception as e:
+        logging.error(e)
+        await callback.message.answer("❌ Ошибка выбора")
 
 # ---------------- DOWNLOAD ----------------
 @dp.callback_query(lambda c: c.data.startswith("dl"))
@@ -74,23 +119,25 @@ async def download(callback: types.CallbackQuery):
 
     file_path = "music.mp3"
 
-    ydl_opts = {
-        "format": "bestaudio",
-        "outtmpl": file_path,
-        "quiet": True
-    }
-
     try:
+        ydl_opts = {
+            "format": "bestaudio",
+            "outtmpl": file_path,
+            "quiet": True
+        }
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.extract_info(url, download=True)
 
         await callback.message.answer_audio(types.FSInputFile(file_path))
 
-    except:
-        await callback.message.answer("❌ ошибка загрузки")
+    except Exception as e:
+        logging.error(e)
+        await callback.message.answer("❌ Ошибка загрузки аудио")
 
-# ---------------- RUN ----------------
+# ---------------- MAIN ----------------
 async def main():
+    logging.info("Bot started")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
