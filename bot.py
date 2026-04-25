@@ -3,30 +3,30 @@ import os
 import yt_dlp
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-TOKEN = "8570431888:AAEQY3Rwo8ElORJSShUzl6VesysFEkz7yyU"
+TOKEN = os.getenv("8570431888:AAEQY3Rwo8ElORJSShUzl6VesysFEkz7yyU")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+user_data = {}
+
 # ---------------- START ----------------
 @dp.message(Command("start"))
-async def start(message: Message):
-    await message.answer(
-        "🎵 Отправь название песни или ссылку TikTok"
-    )
+async def start(message: types.Message):
+    await message.answer("🎧 Бот работает!\n\nОтправь название песни или ссылку")
 
-# ---------------- TIKTOK / LINK ----------------
+# ---------------- LINKS (TikTok / YouTube) ----------------
 @dp.message(lambda m: m.text and "http" in m.text)
-async def handle_link(message: Message):
+async def handle_link(message: types.Message):
     url = message.text
 
-    await message.answer("📥 Загружаю...")
+    await message.answer("📥 Загружаю видео...")
 
     ydl_opts = {
-        "outtmpl": "video.%(ext)s",
         "format": "mp4",
+        "outtmpl": "video.%(ext)s",
         "quiet": True
     }
 
@@ -37,12 +37,11 @@ async def handle_link(message: Message):
 
         await message.answer_video(types.FSInputFile(file))
 
-        # кнопка скачать музыку
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🎧 Скачать музыку", callback_data=f"music|{url}")]
+            [InlineKeyboardButton(text="🎵 Скачать музыку", callback_data=f"music|{url}")]
         ])
 
-        await message.answer("Что дальше?", reply_markup=kb)
+        await message.answer("Выбери действие 👇", reply_markup=kb)
 
     except:
         await message.answer("❌ Не удалось скачать видео")
@@ -52,16 +51,10 @@ async def handle_link(message: Message):
 async def music_menu(callback: types.CallbackQuery):
     url = callback.data.split("|")[1]
 
-    await callback.message.answer("🔎 Ищу аудио...")
-
-    ydl_opts = {
-        "quiet": True,
-        "format": "bestaudio"
-    }
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
         info = ydl.extract_info(url, download=False)
-        title = info.get("title")
+
+    title = info.get("title", "Unknown")
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="⬇️ Скачать аудио", callback_data=f"dl|{url}")]
@@ -91,32 +84,45 @@ async def download_audio(callback: types.CallbackQuery):
     except:
         await callback.message.answer("❌ Ошибка загрузки")
 
-# ---------------- SEARCH MUSIC ----------------
+# ---------------- SEARCH ----------------
 @dp.message()
-async def search_music(message: Message):
+async def search(message: types.Message):
     query = message.text
 
-    await message.answer("🔎 Ищу треки...")
-
-    ydl_opts = {
-        "quiet": True,
-        "noplaylist": True
-    }
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
         info = ydl.extract_info(f"ytsearch5:{query}", download=False)
 
-    results = info["entries"]
+    results = info.get("entries", [])
+
+    if not results:
+        await message.answer("❌ Ничего не найдено")
+        return
+
+    user_data[message.from_user.id] = results
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text=r["title"][:40],
-            callback_data=f"dl|{r['webpage_url']}"
+            callback_data=f"sel|{i}"
         )]
-        for r in results
+        for i, r in enumerate(results)
     ])
 
     await message.answer("🎧 Выбери трек:", reply_markup=kb)
+
+# ---------------- SELECT TRACK ----------------
+@dp.callback_query(lambda c: c.data.startswith("sel"))
+async def select_track(callback: types.CallbackQuery):
+    i = int(callback.data.split("|")[1])
+    uid = callback.from_user.id
+
+    url = user_data[uid][i]["webpage_url"]
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬇️ Скачать", callback_data=f"dl|{url}")]
+    ])
+
+    await callback.message.answer("Готово 👇", reply_markup=kb)
 
 # ---------------- RUN ----------------
 async def main():
