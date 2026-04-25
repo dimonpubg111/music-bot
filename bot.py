@@ -8,7 +8,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ---------------- CONFIG ----------------
 TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 123456789  # <-- вставь свой Telegram ID
+ADMIN_ID = 8197564304  # <-- твой Telegram ID
 
 if not TOKEN:
     raise ValueError("BOT_TOKEN is missing")
@@ -22,12 +22,12 @@ user_data = {}
 @dp.message(Command("start"))
 async def start(message: types.Message):
     await message.answer(
-        "🎧 PRO BOT готов\n\n"
-        "📌 отправь название музыки\n"
-        "📎 или ссылку (YouTube / TikTok)"
+        "🎧 PRO BOT\n\n"
+        "📌 отправь название песни\n"
+        "📎 или ссылку (TikTok / YouTube)"
     )
 
-# ---------------- ADMIN PANEL ----------------
+# ---------------- ADMIN ----------------
 @dp.message(Command("admin"))
 async def admin(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -50,12 +50,12 @@ async def stats(message: types.Message):
 async def ping(message: types.Message):
     await message.answer("🏓 bot alive")
 
-# ---------------- MAIN ----------------
+# ---------------- MAIN HANDLER ----------------
 @dp.message()
 async def handle(message: types.Message):
     text = message.text
 
-    # -------- VIDEO LINK --------
+    # ---------------- VIDEO LINK ----------------
     if "http" in text:
         await message.answer("📥 скачиваю видео...")
 
@@ -78,18 +78,20 @@ async def handle(message: types.Message):
 
         return
 
-    # -------- MUSIC SEARCH --------
+    # ---------------- MUSIC SEARCH ----------------
     await message.answer("🔎 ищу музыку...")
 
     try:
+        query = f"ytsearch3:{text}"
+
         ydl_opts = {
             "quiet": True,
             "noplaylist": True,
-            "socket_timeout": 5
+            "socket_timeout": 8
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"ytsearch3:{text}", download=False)
+            info = ydl.extract_info(query, download=False)
 
         results = info.get("entries", [])
 
@@ -112,7 +114,7 @@ async def handle(message: types.Message):
     except:
         await message.answer("❌ ошибка поиска")
 
-# ---------------- SELECT TRACK ----------------
+# ---------------- SELECT ----------------
 @dp.callback_query(lambda c: c.data.startswith("sel"))
 async def select(callback: types.CallbackQuery):
     i = int(callback.data.split("|")[1])
@@ -126,7 +128,7 @@ async def select(callback: types.CallbackQuery):
 
     await callback.message.answer("готово 👇", reply_markup=kb)
 
-# ---------------- DOWNLOAD AUDIO ----------------
+# ---------------- DOWNLOAD ----------------
 @dp.callback_query(lambda c: c.data.startswith("dl"))
 async def download(callback: types.CallbackQuery):
     url = callback.data.split("|")[1]
@@ -147,7 +149,7 @@ async def download(callback: types.CallbackQuery):
         await callback.message.answer_audio(types.FSInputFile(file_path))
 
     except:
-        await callback.message.answer("❌ ошибка загрузки аудио")
+        await callback.message.answer("❌ ошибка загрузки")
 
 # ---------------- RUN ----------------
 async def main():
