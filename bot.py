@@ -1,20 +1,17 @@
 import os
 import asyncio
-import logging
 import yt_dlp
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# ---------------- LOGGING ----------------
-logging.basicConfig(level=logging.INFO)
-
 # ---------------- CONFIG ----------------
 TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = 123456789  # <-- вставь свой Telegram ID
 
 if not TOKEN:
-    raise ValueError("BOT_TOKEN is missing in environment variables")
+    raise ValueError("BOT_TOKEN is missing")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -25,26 +22,49 @@ user_data = {}
 @dp.message(Command("start"))
 async def start(message: types.Message):
     await message.answer(
-        "🎧 Production Bot готов\n\n"
-        "📌 Отправь название музыки\n"
-        "📎 Или ссылку (YouTube / TikTok)"
+        "🎧 PRO BOT готов\n\n"
+        "📌 отправь название музыки\n"
+        "📎 или ссылку (YouTube / TikTok)"
     )
 
-# ---------------- SEARCH ----------------
+# ---------------- ADMIN PANEL ----------------
+@dp.message(Command("admin"))
+async def admin(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        return await message.answer("⛔ нет доступа")
+
+    await message.answer(
+        "🛠 ADMIN PANEL\n\n"
+        "/stats - пользователи\n"
+        "/ping - проверка"
+    )
+
+@dp.message(Command("stats"))
+async def stats(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    await message.answer(f"👥 users: {len(user_data)}")
+
+@dp.message(Command("ping"))
+async def ping(message: types.Message):
+    await message.answer("🏓 bot alive")
+
+# ---------------- MAIN ----------------
 @dp.message()
 async def handle(message: types.Message):
-    text = message.text.strip()
+    text = message.text
 
-    # ---------------- LINK ----------------
+    # -------- VIDEO LINK --------
     if "http" in text:
-        await message.answer("📥 Загружаю видео...")
+        await message.answer("📥 скачиваю видео...")
 
         try:
             ydl_opts = {
                 "format": "mp4",
                 "outtmpl": "video.%(ext)s",
                 "quiet": True,
-                "socket_timeout": 8
+                "socket_timeout": 10
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -53,13 +73,13 @@ async def handle(message: types.Message):
 
             await message.answer_video(types.FSInputFile(file))
 
-        except Exception as e:
-            logging.error(e)
-            await message.answer("❌ Ошибка загрузки видео")
+        except:
+            await message.answer("❌ ошибка загрузки видео")
+
         return
 
-    # ---------------- MUSIC SEARCH ----------------
-    await message.answer("🔎 Ищу музыку...")
+    # -------- MUSIC SEARCH --------
+    await message.answer("🔎 ищу музыку...")
 
     try:
         ydl_opts = {
@@ -74,7 +94,7 @@ async def handle(message: types.Message):
         results = info.get("entries", [])
 
         if not results:
-            await message.answer("❌ Ничего не найдено")
+            await message.answer("❌ ничего не найдено")
             return
 
         user_data[message.from_user.id] = results
@@ -87,32 +107,26 @@ async def handle(message: types.Message):
             for i, r in enumerate(results)
         ])
 
-        await message.answer("🎧 Выбери трек:", reply_markup=kb)
+        await message.answer("🎧 выбери трек:", reply_markup=kb)
 
-    except Exception as e:
-        logging.error(e)
-        await message.answer("❌ Ошибка поиска")
+    except:
+        await message.answer("❌ ошибка поиска")
 
-# ---------------- SELECT ----------------
+# ---------------- SELECT TRACK ----------------
 @dp.callback_query(lambda c: c.data.startswith("sel"))
 async def select(callback: types.CallbackQuery):
-    try:
-        i = int(callback.data.split("|")[1])
-        uid = callback.from_user.id
+    i = int(callback.data.split("|")[1])
+    uid = callback.from_user.id
 
-        url = user_data[uid][i]["webpage_url"]
+    url = user_data[uid][i]["webpage_url"]
 
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬇️ Скачать аудио", callback_data=f"dl|{url}")]
-        ])
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬇️ скачать аудио", callback_data=f"dl|{url}")]
+    ])
 
-        await callback.message.answer("Готово 👇", reply_markup=kb)
+    await callback.message.answer("готово 👇", reply_markup=kb)
 
-    except Exception as e:
-        logging.error(e)
-        await callback.message.answer("❌ Ошибка выбора")
-
-# ---------------- DOWNLOAD ----------------
+# ---------------- DOWNLOAD AUDIO ----------------
 @dp.callback_query(lambda c: c.data.startswith("dl"))
 async def download(callback: types.CallbackQuery):
     url = callback.data.split("|")[1]
@@ -121,9 +135,10 @@ async def download(callback: types.CallbackQuery):
 
     try:
         ydl_opts = {
-            "format": "bestaudio",
+            "format": "bestaudio/best",
             "outtmpl": file_path,
-            "quiet": True
+            "quiet": True,
+            "socket_timeout": 10
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -131,13 +146,11 @@ async def download(callback: types.CallbackQuery):
 
         await callback.message.answer_audio(types.FSInputFile(file_path))
 
-    except Exception as e:
-        logging.error(e)
-        await callback.message.answer("❌ Ошибка загрузки аудио")
+    except:
+        await callback.message.answer("❌ ошибка загрузки аудио")
 
-# ---------------- MAIN ----------------
+# ---------------- RUN ----------------
 async def main():
-    logging.info("Bot started")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
