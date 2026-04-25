@@ -32,9 +32,14 @@ async def search(message: types.Message):
         }
 
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(text, download=True)
-                file = ydl.prepare_filename(info)
+            ydl_opts = {
+    "quiet": True,
+    "socket_timeout": 5,
+    "noplaylist": True
+}
+
+with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    info = ydl.extract_info(f"ytsearch5:{text}", download=False)                file = ydl.prepare_filename(info)
 
             await message.answer_video(types.FSInputFile(file))
 
